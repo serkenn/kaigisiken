@@ -26,8 +26,8 @@ export async function checkSession() {
     const r = await fetch('/api/me');
     if (r.status === 401) return { state: 'guest' };
     if (!r.ok) return { state: 'unavailable' };
-    const { user } = await r.json();
-    return { state: 'authed', user };
+    const data = await r.json();
+    return { state: 'authed', user: data.user, logoutUrl: data.logoutUrl || null, authProvider: data.authProvider || null };
   } catch {
     return { state: 'unavailable' };
   }

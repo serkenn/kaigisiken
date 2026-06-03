@@ -1,16 +1,23 @@
 {
   "name": "kaigisiken",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "海技試験ナビ — 履修ロードマップ(benkyo連携)＋受験スケジュール管理。Cloudflare Pages + パスキー認証。",
+  "description": "海技試験ナビ — 履修ロードマップ(benkyo連携)＋受験スケジュール管理。Docker + cloudflared + Cloudflare Access。",
   "scripts": {
+    "start": "node server/server.mjs",
+    "dev": "DEV_BYPASS_AUTH=1 node server/server.mjs",
     "bridge": "node bridge/server.mjs",
     "sync": "node scripts/sync-roadmap.mjs",
-    "dev": "wrangler pages dev",
-    "deploy": "wrangler pages deploy"
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "pages:dev": "wrangler pages dev",
+    "pages:deploy": "wrangler pages deploy"
   },
   "dependencies": {
+    "express": "^4.21.2",
+    "jose": "^5.9.6",
     "@simplewebauthn/server": "^13.1.0"
   },
   "devDependencies": {

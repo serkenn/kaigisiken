@@ -1,0 +1,11 @@
+node_modules
+.git
+.wrangler
+.dev.vars
+.env
+.appdata
+*.log
+.DS_Store
+functions
+lib
+wrangler.toml

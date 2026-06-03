@@ -4,38 +4,87 @@
 
 - **対象の初期設定**: 三級海技士（航海）・「運用」「法規」を7月定期試験で受験（科目合格狙い）
 - **データ構造は汎用**: 級・系統（航海/機関）・戦略（科目合格/一気）を切り替え可能。科目データは後から追加できる
-- **認証**: パスキー（WebAuthn）。初回にパスキー作成 → 再アクセスで自動判定 → 別端末は「サインイン」から
-- **同期**: ログイン中はデータを Cloudflare KV に保存し、端末をまたいで共有
+- **推奨デプロイ**: **Docker + cloudflared(トンネル) + Cloudflare Access 認証**。コンテナに benkyo を同梱し、ホストのbenkyo DBをマウント → **ロードマップはライブ**・端末非依存
+- **AI**: codex-everywhere（Responses API・gpt-5.5）
 
 ---
 
-## アーキテクチャ
+## アーキテクチャ（推奨: Docker + Access）
 
 ```
-ブラウザ (public/ の静的SPA, ビルド不要)
-   │
-   ├── /api/*  ──────────►  Cloudflare Pages Functions (functions/)
-   │                          ├ パスキー認証（@simplewebauthn/server）
-   │                          ├ 個人データ同期（KV: KAIGI_KV）
-   │                          └ AI相談プロキシ（OpenAI / Anthropic）
-   │
-   └── benkyoブリッジ ─────►  ローカルNodeサーバー (bridge/server.mjs)
-        (http://localhost:8970)   └ benkyo CLI を実行（履修ロードマップ＝概念依存グラフ）
+どの端末のブラウザ
+   │  https://kaigi.example.com
+   ▼
+Cloudflare Access（認証: メール/IdP）
+   ▼  (Cloudflare Tunnel)
+cloudflared ──► app コンテナ (server/server.mjs, :8080)
+                  ├ 静的SPA(public/) 配信
+                  ├ /api/me      … Access JWT を検証して identity
+                  ├ /api/data    … 個人データをファイル保存（メール単位）
+                  ├ /api/roadmap … benkyo を「ライブ」render（DBマウント）
+                  └ /api/chat    … codex-everywhere(Responses API) へ
+                  └ benkyo CLI（同梱）── ホストの benkyo DB をマウント
 ```
 
 | 役割 | 担当 |
 |---|---|
-| 履修ロードマップ（概念グラフ・理解度・チュータリング） | **benkyo**（ローカルCLI）＋ブリッジ |
-| 受験プラン・定期試験日程・科目合格の有効期限管理 | **Webアプリ**（このリポジトリ） |
-| 科目・細目チェックリスト（筆記/口述の区分） | Webアプリ（PDF告示から収録） |
-| 認証・端末間同期・AI相談 | Cloudflare Pages Functions |
+| 認証 | **Cloudflare Access**（前段。アプリは identity を信頼） |
+| 履修ロードマップ（概念グラフ・理解度・チュータリング） | **benkyo**（コンテナ内CLI＋マウントした実DB） |
+| 受験プラン・日程・科目合格の有効期限／科目細目 | サーバー＋SPA（このリポジトリ） |
+| AI相談 | codex-everywhere（Responses API） |
 
-> benkyo はローカルのPython CLIのため、サーバーレスな Cloudflare からは直接実行できません。
-> ローカルのブリッジサーバー経由で連携します。
+> 学習（チュータリング）は引き続きMacのClaude Code＋benkyoスキルで行い、書き込みはホストの実DBへ。
+> コンテナはその同じDBをマウントして読むので、ロードマップは常に最新（同期不要）。
+
+> **別構成（Cloudflare Pages + パスキー + KV）** も `functions/` に残置（`npm run pages:dev` / `pages:deploy`）。
+> 同じSPAは `/api/me` で認証状態を見るだけなので、Access配下では認証画面が出ず自動入室します。
 
 ---
 
-## セットアップ
+## デプロイ（推奨）: Docker + cloudflared + Cloudflare Access
+
+このMac/自宅サーバーでコンテナを常時稼働させ、Cloudflare Tunnelで公開、前段をCloudflare Accessで保護する手順。
+
+### 1. Cloudflare Tunnel を作る（トークン取得）
+Zero Trust ダッシュボード → **Networks → Tunnels → Create a tunnel** → *Cloudflared* を選択 →
+トンネル名を付けて **トークン**（`eyJ...`）をコピー。
+**Public Hostname** を追加: ホスト名 = `kaigi.example.com`（あなたのドメインのサブドメイン）、
+Service = **`http://app:8080`**（compose内のサービス名）。
+
+### 2. Cloudflare Access で保護
+Zero Trust → **Access → Applications → Add an application → Self-hosted** →
+Application domain = `kaigi.example.com` → ポリシー（例: 自分のメールのみ許可）を設定 → 作成。
+作成したアプリの **Application Audience (AUD) タグ** をコピー（`.env` の `ACCESS_AUD`）。
+チーム名ドメイン（`yourteam.cloudflareaccess.com`）は `ACCESS_TEAM_DOMAIN` に。
+
+### 3. .env を用意
+```bash
+cp .env.example .env
+# TUNNEL_TOKEN / ACCESS_TEAM_DOMAIN / ACCESS_AUD / OPENAI_API_KEY / BENKYO_DIR を埋める
+```
+`BENKYO_DIR` は `benkyo info` の `db_path` の親ディレクトリ
+（macOSなら `~/Library/Application Support/benkyo`）。
+
+### 4. 起動
+```bash
+npm run docker:up      # = docker compose up -d --build
+npm run docker:logs    # ログ確認
+```
+`https://kaigi.example.com` を開く → Cloudflare Access のログイン → アプリが表示。
+ロードマップは benkyo の実DBをマウントしているので**ライブ**（同期不要）。
+
+### ローカル動作確認（認証なし）
+```bash
+npm install
+DEV_BYPASS_AUTH=1 BENKYO_PROJECT=prj21 npm run dev   # http://localhost:8080
+```
+（`npm run dev` は `DEV_BYPASS_AUTH=1` 付き。benkyoはローカルの既定DBを使用）
+
+---
+
+## セットアップ（別構成: Cloudflare Pages + パスキー）
+
+> 上記 Docker 構成を使う場合はこのセクションは不要です。
 
 ### 0. 前提
 - Node.js 18+
@@ -65,10 +114,10 @@ AIプロバイダは `wrangler.toml` の `[vars]` で設定済み（**codex-ever
 `AI_PROVIDER="openai-responses"`, `OPENAI_BASE_URL="https://codex-everywhere.com"`, `AI_MODEL="gpt-5.5"`。
 別プロバイダに変えるなら `AI_PROVIDER` を `openai`（Chat Completions）や `anthropic` に切替える。
 
-### 4. ローカル起動（2プロセス）
+### 4. ローカル起動（Pages, 2プロセス）
 ```bash
 # ① Webアプリ（Functions込み）  → http://localhost:8788
-npm run dev
+npm run pages:dev
 
 # ② benkyoブリッジ（別ターミナル） → http://localhost:8970
 npm run bridge
@@ -80,7 +129,7 @@ npm run bridge
 **A. CLI 直接アップロード**
 ```bash
 npm install     # ローカルで node_modules を用意（Functionsの依存）
-npm run deploy
+npm run pages:deploy
 ```
 
 **B. ダッシュボードでGit連携（自動デプロイ）** — Workers & Pages → Create → Pages → Connect to Git で `serkenn/kaigisiken` を選び:

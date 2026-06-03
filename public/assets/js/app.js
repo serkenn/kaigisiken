@@ -12,6 +12,7 @@ let currentUser = null;
 let syncMode = 'local'; // 'server' | 'local'
 let applyingRemote = false;
 let syncTimer = null;
+let accessLogoutUrl = null; // Cloudflare Access のログアウトURL（あれば）
 
 // ---------- ユーティリティ ----------
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -90,6 +91,7 @@ function render() {
 
   const logoutBtn = $('#btn-logout');
   if (logoutBtn) logoutBtn.addEventListener('click', async () => {
+    if (accessLogoutUrl) { window.location.href = accessLogoutUrl; return; } // Cloudflare Access
     await auth.logout();
     currentUser = null; syncMode = 'local';
     render();
@@ -395,8 +397,8 @@ function renderRoadmap(s) {
       <div class="card-h">履修ロードマップ（benkyo連携）
         <button class="btn-mini" id="bk-reload">再読込</button>
       </div>
-      <p class="hint">概念依存グラフは <b>benkyo</b> が管理します。取得元: <b>${s.settings.roadmapSource === 'bridge' ? 'ローカルブリッジ' : 'Cloudflare（同期スナップショット）'}</b>。
-        ${s.settings.roadmapSource === 'cloud' ? 'グラフを更新したらMacで <code>npm run sync</code> を実行すると、どの端末でも最新になります。' : `ローカルブリッジ <code>${esc(s.settings.bridgeUrl)}</code> / プロジェクト <code>${esc(s.settings.benkyoProject)}</code> から取得。`}
+      <p class="hint">概念依存グラフは <b>benkyo</b> が管理します。取得元: <b>${s.settings.roadmapSource === 'bridge' ? 'ローカルブリッジ' : 'サーバー（/api/roadmap）'}</b>。
+        ${s.settings.roadmapSource === 'cloud' ? 'コンテナ運用ならbenkyo DBをマウントしてライブ表示、Pages運用なら <code>npm run sync</code> で同期したスナップショットを表示します。' : `ローカルブリッジ <code>${esc(s.settings.bridgeUrl)}</code> / プロジェクト <code>${esc(s.settings.benkyoProject)}</code> から取得。`}
         <span class="muted">青=深く理解 / 黄=道具として使う / 灰=試験ゴール</span></p>
       <div id="bk-graph" class="bk-graph"><div class="muted">読み込み中…</div></div>
     </section>
@@ -880,6 +882,7 @@ async function boot() {
   const sess = await auth.checkSession();
   if (sess.state === 'authed') {
     currentUser = sess.user; syncMode = 'server';
+    accessLogoutUrl = sess.logoutUrl || null;
     await pullData();
     render();
   } else {

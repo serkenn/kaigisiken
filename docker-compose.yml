@@ -1,0 +1,39 @@
+# 海技試験ナビ — Docker + cloudflared(トンネル) 構成
+#   app        : Node サーバー + benkyo（ホストのbenkyo DBをマウント）
+#   cloudflared: Cloudflare Tunnel。公開ホスト名→ http://app:8080 はダッシュボードで設定。
+#                その公開ホスト名に Cloudflare Access を付けて認証する。
+#
+#   事前に .env を用意（.env.example 参照）。起動: docker compose up -d --build
+services:
+  app:
+    build: .
+    environment:
+      # Cloudflare Access（前段認証）
+      ACCESS_TEAM_DOMAIN: ${ACCESS_TEAM_DOMAIN}      # 例: yourteam.cloudflareaccess.com
+      ACCESS_AUD: ${ACCESS_AUD}                      # Access アプリの Audience タグ
+      # AI（codex-everywhere / Responses API）
+      AI_PROVIDER: ${AI_PROVIDER:-openai-responses}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://codex-everywhere.com}
+      AI_MODEL: ${AI_MODEL:-gpt-5.5}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # benkyo（ロードマップ・ライブ）
+      BENKYO_DB: /data/benkyo/db.sqlite
+      BENKYO_PROJECT: ${BENKYO_PROJECT:-prj21}
+      DATA_DIR: /data/app
+    volumes:
+      # ホストの benkyo DB ディレクトリをマウント（= 学習の真実の源をそのまま参照）
+      - "${BENKYO_DIR:-${HOME}/Library/Application Support/benkyo}:/data/benkyo"
+      # 個人データ（受験プラン・進捗）の永続化
+      - "./.appdata:/data/app"
+    expose:
+      - "8080"
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - app
+    restart: unless-stopped
