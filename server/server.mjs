@@ -99,23 +99,61 @@ app.post('/api/chat', auth, async (req, res) => {
       model,
       instructions: system || '',
       input: msgs.map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content) })),
-      // 推論モデル(gpt-5.x)は思考トークンを消費するため、本文が出るよう枠を広めに
       max_output_tokens: Number(process.env.AI_MAX_OUTPUT_TOKENS || 4000),
-      // 既定は low（高にすると思考に枠を取られ本文が空になりやすい）
       reasoning: { effort: process.env.AI_REASONING_EFFORT || 'low' },
+      // codex-everywhere(Codexバックエンド)は非ストリームだと output が空になるためストリーム必須
+      stream: true,
     };
     const r = await fetch(`${base}/responses`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
       body: JSON.stringify(body),
     });
-    const data = await r.json();
-    if (!r.ok) return res.status(502).json({ error: 'AI APIエラー', detail: data });
-    res.json({ reply: extractResponsesText(data) });
+    if (!r.ok) {
+      const d = await r.text().catch(() => '');
+      return res.status(502).json({ error: 'AI APIエラー', detail: d.slice(0, 1000) });
+    }
+    const reply = await readResponses(r);
+    res.json({ reply });
   } catch (e) {
     res.status(502).json({ error: 'AI呼び出しに失敗しました', detail: String(e.message || e) });
   }
 });
+
+// Responses API のストリーム(SSE)を読んで本文を組み立てる。
+// 非ストリームJSONが返ってきた場合もフォールバックで解釈する。
+async function readResponses(r) {
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  let raw = '';
+  let out = '';
+  let completed = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = dec.decode(value, { stream: true });
+    raw += chunk;
+    buf += chunk;
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line.startsWith('data:')) continue;
+      const p = line.slice(5).trim();
+      if (!p || p === '[DONE]') continue;
+      let ev; try { ev = JSON.parse(p); } catch { continue; }
+      if (ev.type === 'response.output_text.delta' && typeof ev.delta === 'string') out += ev.delta;
+      else if (ev.type === 'response.output_text.done' && !out && typeof ev.text === 'string') out += ev.text;
+      else if (ev.type === 'response.completed' && ev.response) completed = extractAny(ev.response);
+    }
+  }
+  if (out.trim()) return out.trim();
+  if (completed && typeof completed === 'string' && completed.trim() && !completed.startsWith('⚠️')) return completed.trim();
+  // SSEでなく素のJSONだった場合
+  try { const j = JSON.parse(raw); return extractAny(j); } catch { /* noop */ }
+  return out.trim() || completed || '⚠️ 応答を取得できませんでした。';
+}
 
 function extractResponsesText(data) {
   return extractAny(data);
@@ -156,9 +194,15 @@ function extractAny(data) {
   return `⚠️ 本文を取り出せませんでした。keys=[${keys}] status=${data.status || '?'}\nraw: ${snip}`;
 }
 
-// ---- 静的配信 ----
-app.use(express.static(PUBLIC));
-app.get('*', (_req, res) => res.sendFile(path.join(PUBLIC, 'index.html')));
+// ---- 静的配信（更新が即反映されるよう no-cache） ----
+app.use(express.static(PUBLIC, {
+  etag: true,
+  setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+}));
+app.get('*', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(path.join(PUBLIC, 'index.html'));
+});
 
 app.listen(PORT, () => {
   console.log(`kaigisiken server listening on :${PORT}`);
