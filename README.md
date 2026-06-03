@@ -43,7 +43,12 @@ cloudflared ──► app コンテナ (server/server.mjs, :8080)
 
 ## デプロイ（推奨）: Docker + cloudflared + Cloudflare Access
 
-このMac/自宅サーバーでコンテナを常時稼働させ、Cloudflare Tunnelで公開、前段をCloudflare Accessで保護する手順。
+Debian サーバーでコンテナを常時稼働させ、Cloudflare Tunnelで公開、前段をCloudflare Accessで保護する。
+
+> **一発セットアップ**: Cloudflareでトンネルとアプリだけ作ったら、`./setup.sh` で
+> Docker/benkyo導入・DB検出・雛形作成・.env生成・起動まで自動。詳細は **[SETUP.md](SETUP.md)**。
+
+以下は手動で行う場合の手順。
 
 ### 1. Cloudflare Tunnel を作る（トークン取得）
 Zero Trust ダッシュボード → **Networks → Tunnels → Create a tunnel** → *Cloudflared* を選択 →

@@ -4,6 +4,31 @@ Debian サーバーでコンテナを常時起動し、Cloudflare Tunnel で公�
 
 所要時間の目安: 20〜30分（Cloudflare側の設定込み）。
 
+> **benkyo のチュータリング（学習）もこの Debian ホストで行う前提**です。
+> よって benkyo の DB はホスト常駐 → コンテナが同じDBをマウント → **ロードマップは常にライブ・同期もコピーも不要**。
+
+---
+
+## ⚡ クイックスタート（一発スクリプト）
+
+Cloudflare 側で **トンネル**と **Access アプリ**だけ先に作っておけば（手順1・2）、あとは1コマンドで完了します。
+
+```bash
+git clone https://github.com/serkenn/kaigisiken.git
+cd kaigisiken
+./setup.sh
+```
+
+`setup.sh` がやること:
+- Docker / benkyo を未導入なら自動インストール
+- benkyo の DB パスを自動検出（`BENKYO_DIR`）
+- ロードマップ用プロジェクトを確認（無ければ三級航海の雛形を自動作成）
+- `.env` を対話生成（**TUNNEL_TOKEN / ACCESS_TEAM_DOMAIN / ACCESS_AUD / OPENAI_API_KEY** を貼るだけ）
+- `docker compose up -d --build` で起動
+
+> Cloudflare の値（トークン・AUD・チーム名ドメイン）はダッシュボードでしか取れないため、手順1・2で先に用意してください。
+> 以下はその取得方法と、手動で行う場合の詳細です。
+
 ---
 
 ## 0. 前提の確認（Debian）
@@ -35,24 +60,18 @@ benkyo --version
 - Cloudflare に**独自ドメイン（ゾーン）**があること（例 `example.com`）
 - codex-everywhere の **APIキー**
 
-### benkyo の DB（重要）
-ロードマップは benkyo の DB を読みます。**この Debian ホスト上に DB と対象プロジェクトが必要**です。
+### benkyo の DB
+チュータリングもこのホストで行うので、benkyo の DB はこのホストにあります（コピー/同期は不要）。
 
 ```bash
-benkyo info | grep db_path        # Debian の既定: /home/<user>/.local/share/benkyo/db.sqlite
-benkyo project list | grep prj21  # 対象プロジェクトがあるか
+benkyo info | grep db_path     # Debian の既定: /home/<user>/.local/share/benkyo/db.sqlite
+benkyo project list            # プロジェクト一覧
 ```
 
-- まだ何も無い場合は、このホストで benkyo を使って学習プロジェクトを作る（Claude Code / Codex の benkyo スキル）。
-- **学習を別マシン（例: Mac）で行っている場合**は、その DB をこのホストへコピーする:
-  ```bash
-  # 例（Mac側のパス → Debian側の既定パス）
-  scp "/Users/serken/Library/Application Support/benkyo/db.sqlite" \
-      user@debian:~/.local/share/benkyo/db.sqlite
-  ```
-  以後も最新にしたいときは同じ scp を都度実行（or rsync）。
+- プロジェクトがまだ無ければ、`setup.sh` が三級航海の雛形を自動作成します（手動なら `bash scripts/seed-benkyo.sh`）。
+- 学習を進めると同じDBに書き込まれ、ロードマップに即反映されます（コンテナは同じDBをマウント）。
 
-> ロードマップに出す benkyo プロジェクトは既定 `prj21`。変更は `.env` の `BENKYO_PROJECT`。
+> ロードマップに出すプロジェクトIDは `.env` の `BENKYO_PROJECT`（`setup.sh` が自動設定）。
 
 ---
 
