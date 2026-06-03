@@ -13,6 +13,7 @@ id = "88ac39dfd8ad4c8691502743d7e6830b"
 # シークレットはコミットせず、ダッシュボードまたは CLI で設定:
 #   npx wrangler pages secret put SESSION_SECRET
 #   npx wrangler pages secret put OPENAI_API_KEY        # ← codex-everywhere で発行したAPIキー
+#   npx wrangler pages secret put SYNC_TOKEN            # ← ロードマップ同期(npm run sync)用の任意トークン
 # 非シークレット（識別子・エンドポイント等）は [vars] に置く:
 [vars]
 AI_PROVIDER = "openai-responses"

@@ -395,7 +395,8 @@ function renderRoadmap(s) {
       <div class="card-h">履修ロードマップ（benkyo連携）
         <button class="btn-mini" id="bk-reload">再読込</button>
       </div>
-      <p class="hint">概念依存グラフは <b>benkyo</b> が管理します。ローカルのbenkyoブリッジ（<code>${esc(s.settings.bridgeUrl)}</code> / プロジェクト <code>${esc(s.settings.benkyoProject)}</code>）から取得して描画します。
+      <p class="hint">概念依存グラフは <b>benkyo</b> が管理します。取得元: <b>${s.settings.roadmapSource === 'bridge' ? 'ローカルブリッジ' : 'Cloudflare（同期スナップショット）'}</b>。
+        ${s.settings.roadmapSource === 'cloud' ? 'グラフを更新したらMacで <code>npm run sync</code> を実行すると、どの端末でも最新になります。' : `ローカルブリッジ <code>${esc(s.settings.bridgeUrl)}</code> / プロジェクト <code>${esc(s.settings.benkyoProject)}</code> から取得。`}
         <span class="muted">青=深く理解 / 黄=道具として使う / 灰=試験ゴール</span></p>
       <div id="bk-graph" class="bk-graph"><div class="muted">読み込み中…</div></div>
     </section>
@@ -447,30 +448,61 @@ function renderRoadmap(s) {
 }
 
 let mermaidMod = null;
+async function renderMermaid(el, text) {
+  if (!text || !text.trim()) { el.innerHTML = '<p class="muted">グラフが空です。</p>'; return; }
+  if (!mermaidMod) {
+    mermaidMod = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
+    mermaidMod.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
+  }
+  const { svg } = await mermaidMod.render('bkGraphSvg', text);
+  el.innerHTML = svg;
+}
+
 async function loadBenkyoGraph() {
   const el = $('#bk-graph');
   if (!el) return;
   const s = store.getState();
-  const base = (s.settings.bridgeUrl || '').replace(/\/$/, '');
-  const proj = s.settings.benkyoProject;
-  if (!base || !proj) { el.innerHTML = '<p class="muted">設定でブリッジURLとbenkyoプロジェクトIDを指定してください。</p>'; return; }
-  el.innerHTML = '<div class="muted">benkyoブリッジから取得中…</div>';
-  try {
-    const res = await fetch(`${base}/render?project=${encodeURIComponent(proj)}&format=mermaid`);
-    if (!res.ok) throw new Error(`bridge ${res.status}`);
-    const { text } = await res.json();
-    if (!mermaidMod) {
-      mermaidMod = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
-      mermaidMod.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
+  el.innerHTML = '<div class="muted">読み込み中…</div>';
+
+  if (s.settings.roadmapSource === 'bridge') {
+    // ローカルブリッジから取得
+    const base = (s.settings.bridgeUrl || '').replace(/\/$/, '');
+    const proj = s.settings.benkyoProject;
+    if (!base || !proj) { el.innerHTML = '<p class="muted">設定でブリッジURLとプロジェクトIDを指定してください。</p>'; return; }
+    try {
+      const res = await fetch(`${base}/render?project=${encodeURIComponent(proj)}&format=mermaid`);
+      if (!res.ok) throw new Error(`bridge ${res.status}`);
+      const { text } = await res.json();
+      await renderMermaid(el, text);
+    } catch (e) {
+      el.innerHTML = `
+        <div class="gate-note warn">
+          benkyoブリッジに接続できませんでした（${esc(e.message)}）。<br>
+          Macで <code>npm run bridge</code> を起動するか、設定で取得元を「Cloudflare」に変更してください。
+        </div>`;
     }
-    const { svg } = await mermaidMod.render('bkGraphSvg', text);
-    el.innerHTML = svg;
+    return;
+  }
+
+  // 既定: Cloudflare KV のスナップショットから取得（端末非依存）
+  try {
+    const res = await fetch('/api/roadmap');
+    if (res.status === 401) { el.innerHTML = '<p class="muted">ログインするとロードマップを表示できます。</p>'; return; }
+    if (!res.ok) throw new Error(`api ${res.status}`);
+    const { roadmap } = await res.json();
+    if (!roadmap || !roadmap.mermaid) {
+      el.innerHTML = `
+        <div class="gate-note warn">
+          まだロードマップが同期されていません。<br>
+          Macで <code>npm run sync</code> を一度実行すると、ここに表示されます（以後どの端末でも閲覧可）。
+        </div>`;
+      return;
+    }
+    await renderMermaid(el, roadmap.mermaid);
+    const when = new Date(roadmap.exportedAt);
+    el.insertAdjacentHTML('beforeend', `<div class="muted" style="font-size:.75rem;margin-top:.4rem">最終同期: ${fmtDate(when)} ${when.toLocaleTimeString()}</div>`);
   } catch (e) {
-    el.innerHTML = `
-      <div class="gate-note warn">
-        benkyoブリッジに接続できませんでした（${esc(e.message)}）。<br>
-        ローカルで <code>npm run bridge</code> を起動し、設定のブリッジURL（既定 <code>http://localhost:8970</code>）とプロジェクトIDを確認してください。
-      </div>`;
+    el.innerHTML = `<div class="gate-note warn">ロードマップの取得に失敗しました（${esc(e.message)}）。</div>`;
   }
 }
 
@@ -736,16 +768,21 @@ function renderSettings(s) {
     </section>
     <section class="card">
       <div class="card-h">benkyo連携（ロードマップ）</div>
-      <p class="muted">履修ロードマップはローカルの benkyo ブリッジ（<code>node bridge/server.mjs</code>）経由で取得します。</p>
       <div class="form-row">
-        <label>ブリッジURL
-          <input type="text" id="set-bridge" value="${esc(s.settings.bridgeUrl)}" placeholder="http://localhost:8970">
+        <label>ロードマップ取得元
+          <select id="set-rmsrc">
+            <option value="cloud" ${s.settings.roadmapSource === 'cloud' ? 'selected' : ''}>Cloudflare（端末非依存・要 npm run sync）</option>
+            <option value="bridge" ${s.settings.roadmapSource === 'bridge' ? 'selected' : ''}>ローカルブリッジ（Macで起動）</option>
+          </select>
         </label>
         <label>benkyoプロジェクトID
           <input type="text" id="set-project" value="${esc(s.settings.benkyoProject)}" placeholder="prj21">
         </label>
+        <label>ブリッジURL（bridge時のみ）
+          <input type="text" id="set-bridge" value="${esc(s.settings.bridgeUrl)}" placeholder="http://localhost:8970">
+        </label>
       </div>
-      <p class="hint">本格的な概念グラフは benkyo のスキル（benkyo-project-init / tutoring）で拡張できます。</p>
+      <p class="hint"><b>Cloudflare</b>: Macで <code>npm run sync</code> するとグラフがKVに保存され、どの端末からでも閲覧できます（推奨）。<b>ローカルブリッジ</b>: 見る端末で <code>npm run bridge</code> 起動が必要。本格的な概念グラフは benkyo のスキル（benkyo-project-init / tutoring）で拡張できます。</p>
     </section>
     <section class="card">
       <div class="card-h">AI設定</div>
@@ -772,6 +809,7 @@ function renderSettings(s) {
   $('#btn-reset').addEventListener('click', () => {
     if (confirm('すべてのデータを初期化します。よろしいですか？')) { store.resetAll(); render(); }
   });
+  $('#set-rmsrc').addEventListener('change', (e) => store.update((st) => { st.settings.roadmapSource = e.target.value; }));
   $('#set-bridge').addEventListener('change', (e) => store.update((st) => { st.settings.bridgeUrl = e.target.value.trim(); }));
   $('#set-project').addEventListener('change', (e) => store.update((st) => { st.settings.benkyoProject = e.target.value.trim(); }));
 }

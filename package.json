@@ -6,6 +6,7 @@
   "description": "海技試験ナビ — 履修ロードマップ(benkyo連携)＋受験スケジュール管理。Cloudflare Pages + パスキー認証。",
   "scripts": {
     "bridge": "node bridge/server.mjs",
+    "sync": "node scripts/sync-roadmap.mjs",
     "dev": "wrangler pages dev",
     "deploy": "wrangler pages deploy"
   },

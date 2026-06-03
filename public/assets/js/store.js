@@ -40,7 +40,9 @@ function defaultState() {
     settings: {
       aiEnabled: true,
       aiTone: 'concise', // 'concise' | 'detailed'
-      // benkyo ブリッジ連携（ローカルAPI）
+      // ロードマップ取得元: 'cloud'=Cloudflare KV（端末非依存・要 npm run sync）/ 'bridge'=ローカルbenkyoブリッジ
+      roadmapSource: 'cloud',
+      // benkyo ブリッジ連携（ローカルAPI。roadmapSource='bridge' のとき使用）
       bridgeUrl: 'http://localhost:8970',
       benkyoProject: 'prj21',
     },
