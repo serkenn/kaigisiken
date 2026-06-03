@@ -35,6 +35,9 @@ function defaultState() {
     },
     // 細目チェックリスト  キー: `${subjectId}:${categoryId}:${topicIndex}`
     checklist: {},
+    // 学習計画タスク（カレンダー/ガント用）
+    //   { id, title, subjectId, start:'YYYY-MM-DD', end:'YYYY-MM-DD', done:false }
+    studyPlan: [],
     // 試験日程（年ごと）
     schedules: { [year]: defaultSchedule(year) },
     settings: {
@@ -75,6 +78,7 @@ function migrate(s) {
     schedules: { ...base.schedules, ...(s.schedules || {}) },
     subjects: s.subjects || {},
     checklist: s.checklist || {},
+    studyPlan: Array.isArray(s.studyPlan) ? s.studyPlan : [],
     sittings: s.sittings || base.sittings,
   };
 }

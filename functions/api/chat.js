@@ -45,9 +45,9 @@ async function callResponses(env, system, msgs) {
       role: m.role === 'assistant' ? 'assistant' : 'user',
       content: String(m.content),
     })),
-    max_output_tokens: 1500,
+    max_output_tokens: Number(env.AI_MAX_OUTPUT_TOKENS || 4000),
+    reasoning: { effort: env.AI_REASONING_EFFORT || 'low' },
   };
-  if (env.AI_REASONING_EFFORT) body.reasoning = { effort: env.AI_REASONING_EFFORT };
 
   const r = await fetch(`${baseUrl(env)}/responses`, {
     method: 'POST',
@@ -64,13 +64,21 @@ function extractResponsesText(data) {
   if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
   const parts = [];
   for (const item of data.output || []) {
-    if (item.type === 'message' || item.role === 'assistant') {
-      for (const c of item.content || []) {
-        if (typeof c.text === 'string') parts.push(c.text);
-      }
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const c of content) {
+      if (typeof c === 'string') parts.push(c);
+      else if (typeof c.text === 'string') parts.push(c.text);
+      else if (c.text && typeof c.text.value === 'string') parts.push(c.text.value);
     }
   }
-  return parts.join('').trim() || '(空の応答)';
+  const txt = parts.join('').trim();
+  if (txt) return txt;
+  const status = data.status || '?';
+  const reason = data.incomplete_details?.reason || '';
+  const types = (data.output || []).map((o) => o.type).join(',') || '(none)';
+  let hint = '';
+  if (reason === 'max_output_tokens') hint = ' 思考トークンが上限に達しました。AI_MAX_OUTPUT_TOKENS を増やすか AI_REASONING_EFFORT=minimal を。';
+  return `⚠️ 本文が空でした (status=${status}${reason ? ', reason=' + reason : ''}, items=[${types}]).${hint}`;
 }
 
 // ---- OpenAI 互換 Chat Completions ----

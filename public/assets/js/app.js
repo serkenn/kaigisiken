@@ -50,6 +50,7 @@ const TABS = [
   { id: 'dashboard', label: 'ダッシュボード', icon: '🧭' },
   { id: 'plan', label: '受験プラン', icon: '🗂️' },
   { id: 'roadmap', label: 'ロードマップ', icon: '🛣️' },
+  { id: 'study', label: '学習計画', icon: '📅' },
   { id: 'subjects', label: '科目・細目', icon: '📚' },
   { id: 'ai', label: 'AI相談', icon: '🤖' },
   { id: 'settings', label: '設定', icon: '⚙️' },
@@ -103,6 +104,7 @@ function render() {
     dashboard: renderDashboard,
     plan: renderPlan,
     roadmap: renderRoadmap,
+    study: renderStudy,
     subjects: renderSubjects,
     ai: renderAI,
     settings: renderSettings,
@@ -514,6 +516,244 @@ function oralOnlySummary(exam) {
 }
 
 // =============================================================
+// 学習計画（カレンダー / ガント / AI相談）
+// =============================================================
+let studyView = 'calendar'; // 'calendar' | 'gantt'
+let calCursor = null;       // 表示中の月（その月の1日）
+
+const SUBJ_PALETTE = ['#2f6fed', '#0e8c8c', '#d97706', '#7c3aed', '#d14343', '#1d9d6b'];
+function subjColor(exam, subId) {
+  if (!exam || !subId) return '#8aa0b6';
+  const i = exam.subjects.findIndex((x) => x.id === subId);
+  return i >= 0 ? SUBJ_PALETTE[i % SUBJ_PALETTE.length] : '#8aa0b6';
+}
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function byStart(a, b) { return (a.start || '').localeCompare(b.start || ''); }
+
+function studyMilestones(s, exam) {
+  const ms = [];
+  for (const sit of s.sittings) {
+    const sch = store.findSchedule(sit.scheduleId);
+    const d = parseDate(sit.type === 'oral' ? sch?.oralDate : sch?.writtenDate);
+    if (d) ms.push({ date: d, label: `${sit.label} ${sit.type === 'oral' ? '口述' : '筆記'}`, kind: 'exam' });
+  }
+  if (exam) for (const sub of exam.subjects) {
+    const exp = store.subjectPassExpiry(sub.id);
+    if (exp) ms.push({ date: exp, label: `${sub.short} 失効`, kind: 'expiry' });
+  }
+  return ms;
+}
+function upcomingWrittenDate(s) {
+  const ds = s.sittings
+    .map((sit) => { const sch = store.findSchedule(sit.scheduleId); return parseDate(sit.type === 'oral' ? sch?.oralDate : sch?.writtenDate); })
+    .filter((d) => d && daysUntil(d) >= 0).sort((a, b) => a - b);
+  return ds[0] ? ymd(ds[0]) : '';
+}
+
+function renderStudy(s) {
+  const exam = getExam(s.profile.system, s.profile.grade);
+  if (!calCursor) { const t = new Date(); calCursor = new Date(t.getFullYear(), t.getMonth(), 1); }
+  const subjOpts = exam ? exam.subjects.map((x) => `<option value="${x.id}">${esc(x.short)}</option>`).join('') : '';
+
+  appEl().innerHTML = `
+    <section class="card">
+      <div class="card-h">学習計画
+        <button class="btn-mini" id="ai-plan">🤖 AIに計画を相談</button>
+      </div>
+      <div class="form-row">
+        <label>内容<input type="text" id="sp-title" placeholder="例: 操船の旋回圏を復習"></label>
+        <label>科目
+          <select id="sp-subj"><option value="">（なし）</option>${subjOpts}</select>
+        </label>
+        <label>開始<input type="date" id="sp-start"></label>
+        <label>終了<input type="date" id="sp-end"></label>
+        <button class="btn" id="sp-add">追加</button>
+      </div>
+      <p id="sp-msg" class="hint"></p>
+    </section>
+
+    <section class="card">
+      <div class="card-h">
+        <button class="chip-btn ${studyView === 'calendar' ? 'on' : ''}" data-sv="calendar">📅 カレンダー</button>
+        <button class="chip-btn ${studyView === 'gantt' ? 'on' : ''}" data-sv="gantt">📊 ガント</button>
+        <span class="muted" style="font-size:.8rem">試験日＝赤マーカー／科目合格の失効＝橙マーカー</span>
+      </div>
+      <div id="study-view"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-h">タスク一覧（${s.studyPlan.length}）</div>
+      <ul class="task-list">
+        ${s.studyPlan.slice().sort(byStart).map((t) => taskRow(t, exam)).join('') || '<li class="muted">タスクがありません。上で追加するか、AIに相談してください。</li>'}
+      </ul>
+    </section>
+  `;
+
+  $$('[data-sv]').forEach((b) => b.addEventListener('click', () => { studyView = b.dataset.sv; renderStudy(store.getState()); }));
+  $('#sp-add').addEventListener('click', addTask);
+  $('#sp-title').addEventListener('keydown', (e) => { if (e.key === 'Enter') addTask(); });
+  $('#ai-plan').addEventListener('click', aiPlan);
+
+  const list = $('.task-list');
+  if (list) list.addEventListener('click', (e) => {
+    const li = e.target.closest('[data-task]'); if (!li) return;
+    const id = li.dataset.task;
+    if (e.target.matches('[data-del]')) { store.update((st) => { st.studyPlan = st.studyPlan.filter((x) => x.id !== id); }); renderStudy(store.getState()); }
+    else if (e.target.matches('[data-done]')) { const chk = e.target.checked; store.update((st) => { const t = st.studyPlan.find((x) => x.id === id); if (t) t.done = chk; }); renderStudy(store.getState()); }
+  });
+
+  const vc = $('#study-view');
+  if (studyView === 'calendar') drawCalendar(vc, s, exam); else drawGantt(vc, s, exam);
+}
+
+function taskRow(t, exam) {
+  const col = subjColor(exam, t.subjectId);
+  const sub = exam && t.subjectId ? subjShort(exam, t.subjectId) : '';
+  return `<li class="task ${t.done ? 'done' : ''}" data-task="${t.id}">
+    <input type="checkbox" data-done ${t.done ? 'checked' : ''}>
+    <span class="task-dot" style="background:${col}"></span>
+    <span class="task-main"><b>${esc(t.title)}</b> ${sub ? `<span class="chip">${esc(sub)}</span>` : ''}</span>
+    <span class="task-dates muted">${esc(t.start || '?')}〜${esc(t.end || t.start || '?')}</span>
+    <button class="btn-mini danger" data-del>削除</button>
+  </li>`;
+}
+
+function addTask() {
+  const title = $('#sp-title').value.trim();
+  const start = $('#sp-start').value;
+  const end = $('#sp-end').value || start;
+  const subjectId = $('#sp-subj').value;
+  if (!title || !start) { $('#sp-msg').textContent = '内容と開始日は必須です。'; return; }
+  store.update((st) => { st.studyPlan.push({ id: crypto.randomUUID(), title, subjectId, start, end, done: false }); });
+  renderStudy(store.getState());
+}
+
+function drawCalendar(c, s, exam) {
+  const cur = calCursor; const y = cur.getFullYear(); const m = cur.getMonth();
+  const startOff = new Date(y, m, 1).getDay();
+  const ms = studyMilestones(s, exam);
+  const today = ymd(new Date());
+  const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+  let cells = '';
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(y, m, 1 - startOff + i);
+    const ds = ymd(d);
+    const tasks = s.studyPlan.filter((t) => t.start && ds >= t.start && ds <= (t.end || t.start));
+    const dayMs = ms.filter((x) => ymd(x.date) === ds);
+    cells += `<div class="cal-cell ${d.getMonth() === m ? '' : 'cal-out'} ${ds === today ? 'cal-today' : ''}">
+      <div class="cal-day">${d.getDate()}</div>
+      ${dayMs.map((x) => `<div class="cal-ms ${x.kind}">${esc(x.label)}</div>`).join('')}
+      ${tasks.map((t) => `<div class="cal-task ${t.done ? 'done' : ''}" style="border-left-color:${subjColor(exam, t.subjectId)}" title="${esc(t.title)}">${esc(t.title)}</div>`).join('')}
+    </div>`;
+  }
+  c.innerHTML = `
+    <div class="cal-head">
+      <button class="btn-mini" id="cal-prev">‹ 前月</button>
+      <span class="cal-title">${y}年 ${m + 1}月</span>
+      <button class="btn-mini" id="cal-next">翌月 ›</button>
+    </div>
+    <div class="cal-grid">
+      ${weekdays.map((w) => `<div class="cal-wd">${w}</div>`).join('')}
+      ${cells}
+    </div>`;
+  $('#cal-prev').addEventListener('click', () => { calCursor = new Date(y, m - 1, 1); renderStudy(store.getState()); });
+  $('#cal-next').addEventListener('click', () => { calCursor = new Date(y, m + 1, 1); renderStudy(store.getState()); });
+}
+
+function drawGantt(c, s, exam) {
+  const tasks = s.studyPlan.filter((t) => t.start).slice().sort(byStart);
+  const ms = studyMilestones(s, exam);
+  if (!tasks.length && !ms.length) { c.innerHTML = '<p class="muted">表示する項目がありません。タスクを追加するか試験日を設定してください。</p>'; return; }
+  const times = [];
+  tasks.forEach((t) => { times.push(parseDate(t.start).getTime()); times.push(parseDate(t.end || t.start).getTime()); });
+  ms.forEach((x) => times.push(x.date.getTime()));
+  times.push(Date.now());
+  const min = new Date(Math.min(...times)); min.setDate(min.getDate() - 3);
+  const max = new Date(Math.max(...times)); max.setDate(max.getDate() + 3);
+  const span = Math.max(1, (max - min) / 86400000);
+  const pct = (d) => ((d - min) / 86400000 / span) * 100;
+  const dayW = 100 / span;
+
+  const rows = tasks.map((t) => {
+    const a = parseDate(t.start); const b = parseDate(t.end || t.start);
+    const left = pct(a); const width = Math.min(100 - left, Math.max(1.5, pct(b) - left + dayW));
+    return `<div class="g-row">
+      <div class="g-label" title="${esc(t.title)}">${esc(t.title)}</div>
+      <div class="g-track"><div class="g-bar ${t.done ? 'done' : ''}" style="left:${left}%;width:${width}%;background:${subjColor(exam, t.subjectId)}"></div></div>
+    </div>`;
+  }).join('');
+
+  const todayLeft = pct(new Date());
+  const marks = ms.map((x) => `<div class="g-ms ${x.kind}" style="left:${pct(x.date)}%"><span>${esc(x.label)}</span></div>`).join('');
+
+  c.innerHTML = `
+    <div class="gantt">
+      <div class="g-row g-axis">
+        <div class="g-label muted">${fmtDate(min)}〜${fmtDate(max)}</div>
+        <div class="g-track">
+          ${(todayLeft >= 0 && todayLeft <= 100) ? `<div class="g-today" style="left:${todayLeft}%"></div>` : ''}
+          ${marks}
+        </div>
+      </div>
+      ${rows || '<p class="muted">学習タスクはまだありません（上のマーカーは試験日・失効日）。</p>'}
+    </div>`;
+}
+
+// ---- AIで学習計画を生成 ----
+function parsePlan(text) {
+  try {
+    const m = text.match(/\[[\s\S]*\]/);
+    if (!m) return null;
+    const arr = JSON.parse(m[0]);
+    return Array.isArray(arr) ? arr.filter((x) => x && x.title && x.start) : null;
+  } catch { return null; }
+}
+async function aiPlan() {
+  const s = store.getState();
+  const exam = getExam(s.profile.system, s.profile.grade);
+  const msg = $('#sp-msg');
+  msg.textContent = 'AIが計画を作成中…';
+  const target = upcomingWrittenDate(s);
+  const ids = exam ? exam.subjects.map((x) => x.id).join('|') : '';
+  const map = exam ? exam.subjects.map((x) => `${x.id}=${x.short}`).join(', ') : '';
+  const planned = [...new Set(s.sittings.flatMap((sit) => sit.subjectIds))];
+  const sys = [
+    'あなたは海技士試験の学習計画プランナー。',
+    '出力は JSON 配列のみ（前後に文章やコードフェンスを付けない）。',
+    `各要素: {"title":"短い学習内容","subjectId":"${ids}","start":"YYYY-MM-DD","end":"YYYY-MM-DD"}`,
+    `今日は ${ymd(new Date())}。対象期間は今日〜${target || '試験日未定'}。`,
+    '週2〜4タスク程度で現実的に、復習も織り込む。',
+    `科目IDの対応: ${map}。受験予定科目(${planned.join(',') || '未設定'})を優先。`,
+  ].join('\n');
+  const user = `受験予定（${planned.map((id) => subjShort(exam, id)).join('・') || '未設定'}）に向けた、いつ何を勉強するかの計画をJSONで。`;
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ system: sys, messages: [{ role: 'user', content: user }] }),
+    });
+    if (!res.ok) throw new Error(`${res.status}`);
+    const { reply } = await res.json();
+    const arr = parsePlan(reply || '');
+    if (!arr || !arr.length) throw new Error('AIの応答を計画として解釈できませんでした');
+    if (confirm(`AI提案 ${arr.length} 件を学習計画に追加しますか？`)) {
+      store.update((st) => {
+        arr.forEach((p) => st.studyPlan.push({
+          id: crypto.randomUUID(),
+          title: String(p.title || '学習'),
+          subjectId: (exam && exam.subjects.some((x) => x.id === p.subjectId)) ? p.subjectId : '',
+          start: p.start, end: p.end || p.start, done: false,
+        }));
+      });
+      renderStudy(store.getState());
+    } else { msg.textContent = ''; }
+  } catch (e) {
+    msg.textContent = 'AI計画の作成に失敗: ' + e.message + '（AI相談タブで対話的に相談もできます）';
+  }
+}
+
+// =============================================================
 // 科目・細目チェックリスト
 // =============================================================
 let subjectFilter = 'all'; // all | written | oral
@@ -556,6 +796,15 @@ function renderSubjects(s) {
       });
       render();
     }
+    // 科目メモ
+    if (e.target.matches('[data-subj-note]')) {
+      const id = e.target.dataset.subjNote;
+      store.update((st) => {
+        const p = st.subjects[id] || { status: 'none', examDate: '', passedDate: '', note: '' };
+        p.note = e.target.value;
+        st.subjects[id] = p;
+      });
+    }
     // 細目チェック
     if (e.target.matches('[data-topic]')) {
       const key = e.target.dataset.topic;
@@ -590,6 +839,7 @@ function subjectBlock(sub) {
           ${exp ? `<span class="exp-note">→ ${fmtDate(exp)}まで有効</span>` : ''}
         </div>
       </div>
+      <input type="text" class="subj-note" data-subj-note="${sub.id}" value="${esc(p.note || '')}" placeholder="メモ（例: 2025年4月に科目合格／要復習 など）">
       ${cats.length ? cats.map((c) => categoryBlock(sub, c)).join('') : '<p class="muted">この表示条件に該当する細目はありません。</p>'}
     </section>`;
 }

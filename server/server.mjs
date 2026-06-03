@@ -99,9 +99,11 @@ app.post('/api/chat', auth, async (req, res) => {
       model,
       instructions: system || '',
       input: msgs.map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content) })),
-      max_output_tokens: 1500,
+      // 推論モデル(gpt-5.x)は思考トークンを消費するため、本文が出るよう枠を広めに
+      max_output_tokens: Number(process.env.AI_MAX_OUTPUT_TOKENS || 4000),
+      // 既定は low（高にすると思考に枠を取られ本文が空になりやすい）
+      reasoning: { effort: process.env.AI_REASONING_EFFORT || 'low' },
     };
-    if (process.env.AI_REASONING_EFFORT) body.reasoning = { effort: process.env.AI_REASONING_EFFORT };
     const r = await fetch(`${base}/responses`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
@@ -115,15 +117,27 @@ app.post('/api/chat', auth, async (req, res) => {
   }
 });
 
+// Responses API のレスポンスから本文を頑健に取り出す。空なら原因の診断文を返す。
 function extractResponsesText(data) {
   if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
   const parts = [];
   for (const item of data.output || []) {
-    if (item.type === 'message' || item.role === 'assistant') {
-      for (const c of item.content || []) if (typeof c.text === 'string') parts.push(c.text);
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const c of content) {
+      if (typeof c === 'string') parts.push(c);
+      else if (typeof c.text === 'string') parts.push(c.text);
+      else if (c.text && typeof c.text.value === 'string') parts.push(c.text.value);
     }
   }
-  return parts.join('').trim() || '(空の応答)';
+  const txt = parts.join('').trim();
+  if (txt) return txt;
+  // 空のとき: 原因を可視化（多くは推論で出力上限に達したケース）
+  const status = data.status || '?';
+  const reason = data.incomplete_details?.reason || '';
+  const types = (data.output || []).map((o) => o.type).join(',') || '(none)';
+  let hint = '';
+  if (reason === 'max_output_tokens') hint = ' 思考トークンが上限に達しました。AI_MAX_OUTPUT_TOKENS を増やすか AI_REASONING_EFFORT=minimal をお試しください。';
+  return `⚠️ 本文が空でした (status=${status}${reason ? ', reason=' + reason : ''}, items=[${types}]).${hint}`;
 }
 
 // ---- 静的配信 ----

@@ -169,6 +169,47 @@ table.sched input { min-width: 7rem; width: 100%; }
 .bk-graph { overflow: auto; background: #fbfdff; border: 1px dashed var(--line); border-radius: 8px; padding: .6rem; text-align: center; }
 .bk-graph svg { max-width: 100%; height: auto; }
 
+/* ---- 学習計画: 共通 ---- */
+.subj-note { width: 100%; margin: .4rem 0 0; font-size: .85rem; }
+.task-list { list-style: none; margin: 0; padding: 0; }
+.task { display: flex; align-items: center; gap: .5rem; padding: .35rem 0; border-bottom: 1px dashed var(--line); font-size: .9rem; }
+.task.done .task-main { text-decoration: line-through; color: var(--muted); }
+.task-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.task-main { flex: 1; }
+.task-dates { font-size: .78rem; white-space: nowrap; }
+
+/* ---- カレンダー ---- */
+.cal-head { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-bottom: .5rem; }
+.cal-title { font-weight: 700; color: var(--navy); }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.cal-wd { background: #eef3f9; text-align: center; font-size: .75rem; padding: .25rem 0; color: var(--muted); }
+.cal-wd:first-child { color: var(--danger); }
+.cal-wd:last-child { color: var(--blue); }
+.cal-cell { background: #fff; min-height: 76px; padding: .2rem .25rem; font-size: .72rem; }
+.cal-out { background: #f7f9fc; color: #b9c4d0; }
+.cal-today { background: #eefaf7; box-shadow: inset 0 0 0 2px var(--teal); }
+.cal-day { font-weight: 600; color: var(--muted); }
+.cal-task { border-left: 3px solid var(--teal); background: #f1f5fb; border-radius: 3px; padding: 0 .25rem; margin-top: .15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-task.done { opacity: .5; text-decoration: line-through; }
+.cal-ms { border-radius: 3px; padding: 0 .25rem; margin-top: .15rem; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-ms.exam { background: var(--danger); }
+.cal-ms.expiry { background: var(--warn); }
+
+/* ---- ガント ---- */
+.gantt { font-size: .8rem; }
+.g-row { display: flex; align-items: center; gap: .5rem; padding: .15rem 0; }
+.g-label { width: 30%; max-width: 220px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.g-track { position: relative; flex: 1; height: 20px; background: #f1f5fb; border-radius: 4px; }
+.g-bar { position: absolute; top: 3px; height: 14px; border-radius: 4px; background: var(--teal); min-width: 4px; }
+.g-bar.done { opacity: .45; }
+.g-axis .g-track { background: transparent; height: 28px; overflow: visible; }
+.g-today { position: absolute; top: 0; bottom: -200px; width: 2px; background: var(--blue); z-index: 1; }
+.g-ms { position: absolute; top: 2px; }
+.g-ms::after { content: ''; display: block; width: 9px; height: 9px; transform: translateX(-50%) rotate(45deg); }
+.g-ms.exam::after { background: var(--danger); }
+.g-ms.expiry::after { background: var(--warn); }
+.g-ms span { font-size: .62rem; white-space: nowrap; color: var(--muted); transform: translateX(-50%); display: inline-block; }
+
 /* ---- AI chat ---- */
 .quick { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0; }
 .chat { background: #fbfdff; border: 1px solid var(--line); border-radius: 10px; padding: .6rem; min-height: 180px; max-height: 50vh; overflow-y: auto; }
