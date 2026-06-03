@@ -1,0 +1,14 @@
+# ローカル開発用シークレット（`wrangler pages dev` が読み込む）
+# このファイルを `.dev.vars` にコピーして値を埋める（.dev.vars はコミットしない）。
+
+SESSION_SECRET="任意の長いランダム文字列に変更してください"
+
+# AIプロバイダ（既定 openai）
+AI_PROVIDER="openai"
+OPENAI_API_KEY="sk-..."
+# AI_MODEL="gpt-4o-mini"
+
+# Anthropic を使う場合:
+# AI_PROVIDER="anthropic"
+# ANTHROPIC_API_KEY="sk-ant-..."
+# AI_MODEL="claude-haiku-4-5"

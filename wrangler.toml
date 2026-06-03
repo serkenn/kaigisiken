@@ -1,0 +1,20 @@
+name = "kaigisiken"
+pages_build_output_dir = "public"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# パスキー認証・個人データ同期用の KV ネームスペース。
+#   作成:  npx wrangler kv namespace create KAIGI_KV
+#   出力された id を下に貼り付ける。
+[[kv_namespaces]]
+binding = "KAIGI_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+# 環境変数（シークレット）はコミットせず、ダッシュボードまたは CLI で設定:
+#   npx wrangler pages secret put SESSION_SECRET
+#   npx wrangler pages secret put OPENAI_API_KEY        # AI_PROVIDER=openai の場合
+#   npx wrangler pages secret put ANTHROPIC_API_KEY     # AI_PROVIDER=anthropic の場合
+# 非シークレットの設定は [vars] でも可:
+[vars]
+AI_PROVIDER = "openai"
+# AI_MODEL = "gpt-4o-mini"

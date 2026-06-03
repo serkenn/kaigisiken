@@ -1,0 +1,18 @@
+{
+  "name": "kaigisiken",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "海技試験ナビ — 履修ロードマップ(benkyo連携)＋受験スケジュール管理。Cloudflare Pages + パスキー認証。",
+  "scripts": {
+    "bridge": "node bridge/server.mjs",
+    "dev": "wrangler pages dev",
+    "deploy": "wrangler pages deploy"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^13.1.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}
