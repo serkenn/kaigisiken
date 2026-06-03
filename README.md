@@ -63,7 +63,8 @@ cp .env.example .env
 # TUNNEL_TOKEN / ACCESS_TEAM_DOMAIN / ACCESS_AUD / OPENAI_API_KEY / BENKYO_DIR を埋める
 ```
 `BENKYO_DIR` は `benkyo info` の `db_path` の親ディレクトリ
-（macOSなら `~/Library/Application Support/benkyo`）。
+（Debianなら `~/.local/share/benkyo`、macOSなら `~/Library/Application Support/benkyo`）。
+詳しい手順は **[SETUP.md](SETUP.md)** を参照。
 
 ### 4. 起動
 ```bash

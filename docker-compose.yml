@@ -22,7 +22,8 @@ services:
       DATA_DIR: /data/app
     volumes:
       # ホストの benkyo DB ディレクトリをマウント（= 学習の真実の源をそのまま参照）
-      - "${BENKYO_DIR:-${HOME}/Library/Application Support/benkyo}:/data/benkyo"
+      #   Debian の既定は ~/.local/share/benkyo。`benkyo info` の db_path の親を .env の BENKYO_DIR に設定。
+      - "${BENKYO_DIR:-${HOME}/.local/share/benkyo}:/data/benkyo"
       # 個人データ（受験プラン・進捗）の永続化
       - "./.appdata:/data/app"
     expose:
