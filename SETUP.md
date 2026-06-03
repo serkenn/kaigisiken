@@ -108,7 +108,7 @@ benkyo project list            # プロジェクト一覧
 ## 3. .env を用意する
 
 ```bash
-cd ~/Desktop/kaigisiken      # クローンした場所
+cd kaigisiken      # クローンした場所
 cp .env.example .env
 ```
 
@@ -127,7 +127,9 @@ OPENAI_API_KEY=（あなたの鍵）
 
 # benkyo のデータディレクトリ（Debian の既定。<user> は自分のユーザー名に）
 BENKYO_DIR=/home/<user>/.local/share/benkyo
-BENKYO_PROJECT=prj21
+# ロードマップに出すプロジェクトID。新規DBで雛形を作ると prj1 など。
+# `benkyo project list` で確認（setup.sh を使えば自動設定）
+BENKYO_PROJECT=prj1
 ```
 
 `BENKYO_DIR` が正しいか確認（`db_path` の**親ディレクトリ**を指定する）:
@@ -177,7 +179,7 @@ npm run docker:logs    # ログを確認（Ctrl+Cで抜ける）
 | コード更新を反映 | `git pull && npm run docker:up`（再ビルド） |
 | ローカルで認証なし確認 | `DEV_BYPASS_AUTH=1 npm run dev` → http://localhost:8080 |
 
-- **ロードマップを育てる**: 学習は今まで通り Mac の Claude Code＋benkyo スキル（`benkyo-project-init` / `benkyo-tutoring`）で行えばOK。書き込みは実DBに入り、コンテナは同じDBをマウントしているので**自動で最新**。
+- **ロードマップを育てる**: 学習はこの Debian ホストで Claude Code / Codex の benkyo スキル（`benkyo-project-init` / `benkyo-tutoring`）を使えばOK。書き込みは同じDBに入り、コンテナはそのDBをマウントしているので**自動で最新**（同期不要）。
 - 個人データ（受験プラン・進捗）は `./.appdata/<メール>.json` に保存されます（バックアップ対象）。
 
 ---
