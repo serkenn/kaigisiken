@@ -61,24 +61,32 @@ async function callResponses(env, system, msgs) {
 
 // Responses API のレスポンスから本文テキストを取り出す
 function extractResponsesText(data) {
+  if (!data || typeof data !== 'object') return String(data ?? '');
   if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
   const parts = [];
   for (const item of data.output || []) {
-    const content = Array.isArray(item.content) ? item.content : [];
-    for (const c of content) {
+    for (const c of (Array.isArray(item.content) ? item.content : [])) {
       if (typeof c === 'string') parts.push(c);
       else if (typeof c.text === 'string') parts.push(c.text);
       else if (c.text && typeof c.text.value === 'string') parts.push(c.text.value);
     }
   }
+  if (data.choices && data.choices[0]) {
+    const ch = data.choices[0];
+    if (ch.message && typeof ch.message.content === 'string') parts.push(ch.message.content);
+    else if (Array.isArray(ch.message?.content)) for (const c of ch.message.content) { if (typeof c.text === 'string') parts.push(c.text); }
+    else if (typeof ch.text === 'string') parts.push(ch.text);
+  }
+  if (Array.isArray(data.content)) for (const c of data.content) { if (typeof c.text === 'string') parts.push(c.text); }
+  for (const k of ['text', 'response', 'message', 'reply', 'content']) {
+    if (typeof data[k] === 'string' && data[k].trim()) parts.push(data[k]);
+  }
   const txt = parts.join('').trim();
   if (txt) return txt;
-  const status = data.status || '?';
-  const reason = data.incomplete_details?.reason || '';
-  const types = (data.output || []).map((o) => o.type).join(',') || '(none)';
-  let hint = '';
-  if (reason === 'max_output_tokens') hint = ' 思考トークンが上限に達しました。AI_MAX_OUTPUT_TOKENS を増やすか AI_REASONING_EFFORT=minimal を。';
-  return `⚠️ 本文が空でした (status=${status}${reason ? ', reason=' + reason : ''}, items=[${types}]).${hint}`;
+  const keys = Object.keys(data).join(',');
+  let snip = '';
+  try { snip = JSON.stringify(data).slice(0, 900); } catch { snip = '(stringify失敗)'; }
+  return `⚠️ 本文を取り出せませんでした。keys=[${keys}] status=${data.status || '?'}\nraw: ${snip}`;
 }
 
 // ---- OpenAI 互換 Chat Completions ----

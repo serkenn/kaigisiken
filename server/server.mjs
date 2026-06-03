@@ -117,27 +117,43 @@ app.post('/api/chat', auth, async (req, res) => {
   }
 });
 
-// Responses API のレスポンスから本文を頑健に取り出す。空なら原因の診断文を返す。
 function extractResponsesText(data) {
+  return extractAny(data);
+}
+
+// 複数の返却形式に対応して本文テキストを取り出す。見つからなければ生データを診断表示。
+function extractAny(data) {
+  if (!data || typeof data !== 'object') return String(data ?? '');
+  // 1) Responses API: output_text
   if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
+  // 2) Responses API: output[].content[].text
   const parts = [];
   for (const item of data.output || []) {
-    const content = Array.isArray(item.content) ? item.content : [];
-    for (const c of content) {
+    for (const c of (Array.isArray(item.content) ? item.content : [])) {
       if (typeof c === 'string') parts.push(c);
       else if (typeof c.text === 'string') parts.push(c.text);
       else if (c.text && typeof c.text.value === 'string') parts.push(c.text.value);
     }
   }
+  // 3) Chat Completions 形式
+  if (data.choices && data.choices[0]) {
+    const ch = data.choices[0];
+    if (ch.message && typeof ch.message.content === 'string') parts.push(ch.message.content);
+    else if (Array.isArray(ch.message?.content)) for (const c of ch.message.content) { if (typeof c.text === 'string') parts.push(c.text); }
+    else if (typeof ch.text === 'string') parts.push(ch.text);
+  }
+  // 4) Anthropic 風 content[].text / その他の素直なフィールド
+  if (Array.isArray(data.content)) for (const c of data.content) { if (typeof c.text === 'string') parts.push(c.text); }
+  for (const k of ['text', 'response', 'message', 'reply', 'content']) {
+    if (typeof data[k] === 'string' && data[k].trim()) parts.push(data[k]);
+  }
   const txt = parts.join('').trim();
   if (txt) return txt;
-  // 空のとき: 原因を可視化（多くは推論で出力上限に達したケース）
-  const status = data.status || '?';
-  const reason = data.incomplete_details?.reason || '';
-  const types = (data.output || []).map((o) => o.type).join(',') || '(none)';
-  let hint = '';
-  if (reason === 'max_output_tokens') hint = ' 思考トークンが上限に達しました。AI_MAX_OUTPUT_TOKENS を増やすか AI_REASONING_EFFORT=minimal をお試しください。';
-  return `⚠️ 本文が空でした (status=${status}${reason ? ', reason=' + reason : ''}, items=[${types}]).${hint}`;
+  // 見つからない: 構造を見せる（鍵と生JSONの先頭）
+  const keys = Object.keys(data).join(',');
+  let snip = '';
+  try { snip = JSON.stringify(data).slice(0, 900); } catch { snip = '(stringify失敗)'; }
+  return `⚠️ 本文を取り出せませんでした。keys=[${keys}] status=${data.status || '?'}\nraw: ${snip}`;
 }
 
 // ---- 静的配信 ----
