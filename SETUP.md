@@ -99,9 +99,11 @@ benkyo project list            # プロジェクト一覧
 1. Zero Trust → **Access → Applications → Add an application → Self-hosted**
 2. **Application domain** = `kaigi.example.com`（手順1と同じホスト名）
 3. **Policies** … 例として「Emails」に自分のメールアドレスを許可するポリシーを1つ作る
-4. 作成後、そのアプリの **Overview** にある **Application Audience (AUD) Tag**（長い16進文字列）をコピー → `.env` の `ACCESS_AUD`
+4. 作成後、アプリ名を**クリックして開く** → **Overview**（または編集画面上部）の
+   **Application Audience (AUD) Tag**（長い16進文字列）をコピー → `.env` の `ACCESS_AUD`
+   - 見つからない/面倒なら **`ACCESS_AUD` は空でもOK**（その場合はチームの Access ログイン通過のみ検証＝少し緩い）。
 5. **チーム名ドメイン** を確認: Zero Trust → **Settings → Custom Pages**（または Team domain）に表示される
-   `yourteam.cloudflareaccess.com` → `.env` の `ACCESS_TEAM_DOMAIN`
+   `yourteam.cloudflareaccess.com` → `.env` の `ACCESS_TEAM_DOMAIN`（**これは必須**）
 
 ---
 

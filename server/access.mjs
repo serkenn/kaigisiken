@@ -30,11 +30,11 @@ export async function getAccessUser(req) {
   if (DEV) return { email: process.env.DEV_USER || 'dev@local' };
   const token = req.headers['cf-access-jwt-assertion'] || cookieValue(req.headers.cookie, 'CF_Authorization');
   if (!token) return null;
-  if (!TEAM || !AUD) throw new Error('ACCESS_TEAM_DOMAIN / ACCESS_AUD が未設定です');
-  const { payload } = await jwtVerify(token, getJwks(), {
-    issuer: `https://${TEAM}`,
-    audience: AUD,
-  });
+  if (!TEAM) throw new Error('ACCESS_TEAM_DOMAIN が未設定です');
+  // AUD は任意。設定があれば aud も検証（厳密）、無ければ team(issuer) 検証のみ（緩め）。
+  const opts = { issuer: `https://${TEAM}` };
+  if (AUD) opts.audience = AUD;
+  const { payload } = await jwtVerify(token, getJwks(), opts);
   return { email: payload.email || payload.sub || 'unknown' };
 }
 
