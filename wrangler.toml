@@ -10,11 +10,12 @@ compatibility_flags = ["nodejs_compat"]
 binding = "KAIGI_KV"
 id = "88ac39dfd8ad4c8691502743d7e6830b"
 
-# 環境変数（シークレット）はコミットせず、ダッシュボードまたは CLI で設定:
+# シークレットはコミットせず、ダッシュボードまたは CLI で設定:
 #   npx wrangler pages secret put SESSION_SECRET
-#   npx wrangler pages secret put OPENAI_API_KEY        # AI_PROVIDER=openai の場合
-#   npx wrangler pages secret put ANTHROPIC_API_KEY     # AI_PROVIDER=anthropic の場合
-# 非シークレットの設定は [vars] でも可:
+#   npx wrangler pages secret put OPENAI_API_KEY        # ← codex-everywhere で発行したAPIキー
+# 非シークレット（識別子・エンドポイント等）は [vars] に置く:
 [vars]
-AI_PROVIDER = "openai"
-# AI_MODEL = "gpt-4o-mini"
+AI_PROVIDER = "openai-responses"
+OPENAI_BASE_URL = "https://codex-everywhere.com"
+AI_MODEL = "gpt-5.5"
+# AI_REASONING_EFFORT = "medium"   # gpt-5.5 の思考量（low/medium/high）。未指定ならモデル既定

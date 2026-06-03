@@ -58,9 +58,12 @@ npx wrangler kv namespace create KAIGI_KV
 本番（デプロイ後）:
 ```bash
 npx wrangler pages secret put SESSION_SECRET
-npx wrangler pages secret put OPENAI_API_KEY      # AI_PROVIDER=openai の場合
-# または ANTHROPIC_API_KEY（AI_PROVIDER=anthropic の場合）
+npx wrangler pages secret put OPENAI_API_KEY      # ← codex-everywhere で発行したAPIキー
 ```
+
+AIプロバイダは `wrangler.toml` の `[vars]` で設定済み（**codex-everywhere / Responses API / gpt-5.5**）:
+`AI_PROVIDER="openai-responses"`, `OPENAI_BASE_URL="https://codex-everywhere.com"`, `AI_MODEL="gpt-5.5"`。
+別プロバイダに変えるなら `AI_PROVIDER` を `openai`（Chat Completions）や `anthropic` に切替える。
 
 ### 4. ローカル起動（2プロセス）
 ```bash

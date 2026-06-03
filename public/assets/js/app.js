@@ -749,11 +749,11 @@ function renderSettings(s) {
     </section>
     <section class="card">
       <div class="card-h">AI設定</div>
-      <p class="muted">AIはCloudflare Pages Functions（<code>/api/chat</code>）経由で呼び出します。利用するにはデプロイ先でAPIキーを環境変数に設定してください（README参照）。</p>
+      <p class="muted">AIはCloudflare Pages Functions（<code>/api/chat</code>）経由で <b>codex-everywhere（Responses API・gpt-5.5）</b> を呼び出します。APIキーはデプロイ先のシークレットに設定してください（README参照）。</p>
       <ul class="facts">
-        <li><code>AI_PROVIDER</code> = <code>openai</code>（既定）または <code>anthropic</code></li>
-        <li><code>OPENAI_API_KEY</code> または <code>ANTHROPIC_API_KEY</code></li>
-        <li><code>AI_MODEL</code>（任意。未指定なら既定モデル）</li>
+        <li><code>AI_PROVIDER</code> = <code>openai-responses</code>（codex-everywhere）／<code>openai</code>／<code>anthropic</code></li>
+        <li><code>OPENAI_BASE_URL</code> = <code>https://codex-everywhere.com</code>、<code>AI_MODEL</code> = <code>gpt-5.5</code></li>
+        <li>シークレット: <code>OPENAI_API_KEY</code>（codex-everywhereで発行した鍵）</li>
       </ul>
     </section>
   `;

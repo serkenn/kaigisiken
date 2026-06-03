@@ -1,7 +1,12 @@
-// AI相談プロキシ（要ログイン）。OpenAI / Anthropic を環境変数で切替。
-//   AI_PROVIDER = 'openai'（既定）| 'anthropic'
-//   OPENAI_API_KEY / ANTHROPIC_API_KEY
-//   AI_MODEL（任意。未指定時は各プロバイダの既定）
+// AI相談プロキシ（要ログイン）。プロバイダを環境変数で切替。
+//   AI_PROVIDER:
+//     'openai-responses'  … OpenAI Responses API（codex-everywhere 等）。base_url+"/responses"
+//     'openai'            … OpenAI 互換 Chat Completions。base_url+"/chat/completions"
+//     'anthropic'         … Anthropic Messages API
+//   OPENAI_BASE_URL  … 例: https://codex-everywhere.com （末尾スラッシュ可）
+//   OPENAI_API_KEY   … Bearer トークン（codex-everywhere で発行した APIキー）
+//   AI_MODEL         … 例: gpt-5.5
+//   AI_REASONING_EFFORT … 任意（responses時のみ。low/medium/high）。未設定ならモデル既定。
 import { requireUser, readBody, json } from '../../lib/auth.js';
 
 export async function onRequestPost(context) {
@@ -17,52 +22,94 @@ export async function onRequestPost(context) {
   const provider = (env.AI_PROVIDER || 'openai').toLowerCase();
 
   try {
-    if (provider === 'anthropic') {
-      if (!env.ANTHROPIC_API_KEY) return json({ error: 'ANTHROPIC_API_KEY が未設定です。' }, 503);
-      const model = env.AI_MODEL || 'claude-haiku-4-5';
-      const r = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 1024,
-          system: system || '',
-          messages: msgs.map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
-        }),
-      });
-      const data = await r.json();
-      if (!r.ok) return json({ error: 'AI APIエラー', detail: data }, 502);
-      const reply = (data.content || []).map((b) => b.text || '').join('').trim();
-      return json({ reply });
-    }
-
-    // 既定: OpenAI 互換 Chat Completions
-    if (!env.OPENAI_API_KEY) return json({ error: 'OPENAI_API_KEY が未設定です。' }, 503);
-    const model = env.AI_MODEL || 'gpt-4o-mini';
-    const r = await fetch((env.OPENAI_BASE_URL || 'https://api.openai.com/v1') + '/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.3,
-        messages: [
-          ...(system ? [{ role: 'system', content: system }] : []),
-          ...msgs,
-        ],
-      }),
-    });
-    const data = await r.json();
-    if (!r.ok) return json({ error: 'AI APIエラー', detail: data }, 502);
-    const reply = (data.choices?.[0]?.message?.content || '').trim();
-    return json({ reply });
+    if (provider === 'anthropic') return await callAnthropic(env, system, msgs);
+    if (provider === 'openai-responses') return await callResponses(env, system, msgs);
+    return await callChatCompletions(env, system, msgs);
   } catch (e) {
     return json({ error: 'AI呼び出しに失敗しました', detail: String(e.message || e) }, 502);
   }
+}
+
+function baseUrl(env) {
+  return (env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
+}
+
+// ---- OpenAI Responses API（codex-everywhere 等） ----
+async function callResponses(env, system, msgs) {
+  if (!env.OPENAI_API_KEY) return json({ error: 'OPENAI_API_KEY が未設定です。' }, 503);
+  const model = env.AI_MODEL || 'gpt-5.5';
+  const body = {
+    model,
+    instructions: system || '',
+    input: msgs.map((m) => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: String(m.content),
+    })),
+    max_output_tokens: 1500,
+  };
+  if (env.AI_REASONING_EFFORT) body.reasoning = { effort: env.AI_REASONING_EFFORT };
+
+  const r = await fetch(`${baseUrl(env)}/responses`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json();
+  if (!r.ok) return json({ error: 'AI APIエラー', detail: data }, 502);
+  return json({ reply: extractResponsesText(data) });
+}
+
+// Responses API のレスポンスから本文テキストを取り出す
+function extractResponsesText(data) {
+  if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
+  const parts = [];
+  for (const item of data.output || []) {
+    if (item.type === 'message' || item.role === 'assistant') {
+      for (const c of item.content || []) {
+        if (typeof c.text === 'string') parts.push(c.text);
+      }
+    }
+  }
+  return parts.join('').trim() || '(空の応答)';
+}
+
+// ---- OpenAI 互換 Chat Completions ----
+async function callChatCompletions(env, system, msgs) {
+  if (!env.OPENAI_API_KEY) return json({ error: 'OPENAI_API_KEY が未設定です。' }, 503);
+  const model = env.AI_MODEL || 'gpt-4o-mini';
+  const r = await fetch(`${baseUrl(env)}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+    body: JSON.stringify({
+      model,
+      temperature: 0.3,
+      messages: [...(system ? [{ role: 'system', content: system }] : []), ...msgs],
+    }),
+  });
+  const data = await r.json();
+  if (!r.ok) return json({ error: 'AI APIエラー', detail: data }, 502);
+  return json({ reply: (data.choices?.[0]?.message?.content || '').trim() });
+}
+
+// ---- Anthropic Messages ----
+async function callAnthropic(env, system, msgs) {
+  if (!env.ANTHROPIC_API_KEY) return json({ error: 'ANTHROPIC_API_KEY が未設定です。' }, 503);
+  const model = env.AI_MODEL || 'claude-haiku-4-5';
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1500,
+      system: system || '',
+      messages: msgs.map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
+    }),
+  });
+  const data = await r.json();
+  if (!r.ok) return json({ error: 'AI APIエラー', detail: data }, 502);
+  return json({ reply: (data.content || []).map((b) => b.text || '').join('').trim() });
 }
