@@ -43,10 +43,13 @@ ok "Docker OK ($DOCKER compose)"
 # ---- 2. benkyo ----
 step "benkyo を確認"
 if ! command -v benkyo >/dev/null 2>&1; then
-  warn "benkyo 未インストール → pipx で導入します"
-  if ! command -v pipx >/dev/null 2>&1; then $SUDO apt-get update -y && $SUDO apt-get install -y pipx; fi
-  pipx ensurepath || true
-  pipx install benkyo
+  warn "benkyo 未インストール → uv（Python3.12を自前管理）で導入します"
+  # benkyo は Python>=3.12 必須。Debianの既定Python(3.11)を避けて uv 管理のPythonを使う。
+  if ! command -v uv >/dev/null 2>&1; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+  fi
+  uv tool install --python 3.12 benkyo
   export PATH="$HOME/.local/bin:$PATH"
 fi
 command -v benkyo >/dev/null 2>&1 || die "benkyo が PATH にありません。新しいシェルを開いて再実行してください。"

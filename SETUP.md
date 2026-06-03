@@ -50,9 +50,11 @@ docker version && docker compose version    # 動作確認
 git clone https://github.com/serkenn/kaigisiken.git
 cd kaigisiken
 
-# benkyo（ロードマップ用CLI）。Debian なら pipx か uv で:
-sudo apt-get install -y pipx && pipx ensurepath && pipx install benkyo
-#   または: curl -LsSf https://astral.sh/uv/install.sh | sh && uv tool install benkyo
+# benkyo（ロードマップ用CLI）。benkyo は Python>=3.12 必須なので uv で導入する
+# （Debian 12 の既定 Python は 3.11 のため pipx だと入らない）:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+uv tool install --python 3.12 benkyo
 
 benkyo --version
 ```
