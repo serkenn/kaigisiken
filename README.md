@@ -73,9 +73,27 @@ npm run bridge
 ブラウザで http://localhost:8788 を開く。`localhost` は安全なコンテキスト扱いなのでパスキーが使えます。
 
 ### 5. デプロイ
+
+**A. CLI 直接アップロード**
 ```bash
+npm install     # ローカルで node_modules を用意（Functionsの依存）
 npm run deploy
 ```
+
+**B. ダッシュボードでGit連携（自動デプロイ）** — Workers & Pages → Create → Pages → Connect to Git で `serkenn/kaigisiken` を選び:
+
+| 項目 | 値 |
+|---|---|
+| Framework preset | None |
+| **Build command** | **`npm install`** |
+| Build output directory | `public` |
+| Root directory | `/` |
+
+> ⚠️ **Build command は必須**。`functions/` が `@simplewebauthn/server`（npm）を import するため、ビルド時に依存を
+> インストールしないと `Could not resolve "@simplewebauthn/server"` でビルドが失敗します
+> （Build command を空にすると Pages は install をスキップする）。KVバインド・`nodejs_compat`・compatibility_date は
+> `wrangler.toml` から読まれるので、ダッシュボードではシークレット（`SESSION_SECRET` ほか）だけ設定する。
+
 独自ドメイン or `*.pages.dev` で公開されます（パスキーのRP IDは公開ホスト名から自動導出）。
 ブリッジはローカルで動かし、アプリ設定の「ブリッジURL」を指す運用です（公開する場合は要・別途保護）。
 
