@@ -8,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 #   出力された id を下に貼り付ける。
 [[kv_namespaces]]
 binding = "KAIGI_KV"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = "88ac39dfd8ad4c8691502743d7e6830b"
 
 # 環境変数（シークレット）はコミットせず、ダッシュボードまたは CLI で設定:
 #   npx wrangler pages secret put SESSION_SECRET
